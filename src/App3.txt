@@ -1,0 +1,258 @@
+import React, { useRef, useState, useEffect } from 'react';
+import {
+  Stage,
+  Layer,
+  Rect,
+  Transformer,
+  Image as KonvaImage,
+} from 'react-konva';
+import * as pdfjsLib from 'pdfjs-dist';
+import 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+import jsPDF from 'jspdf';
+import useImage from 'use-image';
+import { Container } from 'react-bootstrap';
+import { PDFDocument, rgb } from 'pdf-lib';
+
+// pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
+
+interface RectProps {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  page: number;
+}
+
+const App: React.FC = () => {
+  const [pdfPages, setPdfPages] = useState<string[]>([]);
+  const [rects, setRects] = useState<RectProps[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const stageRefs = useRef<any[]>([]);
+  const transformerRef = useRef<any>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        if (ev.target?.result) {
+          const typedArray = new Uint8Array(ev.target.result as ArrayBuffer);
+          await loadPdf(typedArray);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      alert('Please select a PDF file.');
+    }
+  };
+
+  const loadPdf = async (pdfData: Uint8Array) => {
+    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    const pages: string[] = [];
+    const scale = 2;
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (context) {
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        await page.render({ canvasContext: context, viewport }).promise;
+        pages.push(canvas.toDataURL());
+      }
+    }
+    setPdfPages(pages);
+  };
+
+  const handleMouseDown = (e: any, page: number) => {
+    const pos = e.target.getStage()?.getPointerPosition();
+    if (pos) {
+      setIsDrawing(true);
+      setStartPoint({ x: pos.x, y: pos.y });
+    }
+  };
+
+  const handleMouseMove = (e: any, page: number) => {
+    if (!isDrawing || !startPoint) return;
+
+    const pos = e.target.getStage()?.getPointerPosition();
+    if (pos) {
+      const newRect = {
+        id: 'temp', // Użyj tymczasowego id dla prostokąta rysowanego
+        x: startPoint.x,
+        y: startPoint.y,
+        width: pos.x - startPoint.x,
+        height: pos.y - startPoint.y,
+        page,
+      };
+      // Aktualizujemy prostokąty do wyświetlenia tymczasowego prostokąta
+      setRects((prev) => {
+        const updated = [...prev];
+        updated.pop(); // Usuń ostatni (tymczasowy prostokąt)
+        updated.push(newRect);
+        return updated;
+      });
+    }
+  };
+
+  const handleMouseUp = (e: any, page: number) => {
+    if (!isDrawing || !startPoint) return;
+
+    const pos = e.target.getStage()?.getPointerPosition();
+    if (pos) {
+      const newRect = {
+        id: rects.length.toString(),
+        x: startPoint.x,
+        y: startPoint.y,
+        width: pos.x - startPoint.x,
+        height: pos.y - startPoint.y,
+        page,
+      };
+      setRects((prev) => [...prev, newRect]);
+    }
+
+    setIsDrawing(false);
+    setStartPoint(null);
+  };
+
+  const handleSelect = (id: string) => {
+    setSelectedId(id);
+    if (transformerRef.current) {
+      transformerRef.current.nodes([]);
+      const rect = rects.find((r) => r.id === id);
+      if (rect) {
+        transformerRef.current.nodes([rect]);
+        transformerRef.current.getLayer().batchDraw();
+      }
+    }
+  };
+
+  // const handleExport = async () => {
+  //   const pdf = new jsPDF();
+  //   for (let i = 0; i < pdfPages.length; i++) {
+  //     const pageRects = rects.filter((rect) => rect.page === i);
+  //     console.log(pageRects);
+  //     const stageCanvas = stageRefs.current[i].toCanvas();
+  //     const imgData = stageCanvas.toDataURL('image/jpeg');
+  //     if (i > 0) pdf.addPage();
+  //     pdf.addImage(
+  //       imgData,
+  //       'JPEG',
+  //       0,
+  //       0,
+  //       pdf.internal.pageSize.width,
+  //       pdf.internal.pageSize.height
+  //     );
+  //   }
+  //   pdf.save('anonymized.pdf');
+  // };
+  const handleExport = async () => {
+    // Tworzymy nowy dokument PDF
+    const pdfDoc = await PDFDocument.create();
+
+    // Załaduj każdą stronę z oryginalnego PDF
+    for (const [index, src] of pdfPages.entries()) {
+      const page = await pdfDoc.addPage(); // Dodajemy nową stronę
+
+      // Ustal wymiary strony na podstawie oryginalnego PDF
+      const imageBytes = await fetch(src).then((res) => res.arrayBuffer());
+      const image = await pdfDoc.embedPng(imageBytes);
+      const { width, height } = image.scale(1);
+
+      // Rysujemy obraz PDF
+      page.drawImage(image, {
+        x: 0,
+        y: 0,
+        width,
+        height,
+      });
+
+      // Rysujemy prostokąty, aby je zanonimizować
+      const rectsOnPage = rects.filter((rect) => rect.page === index);
+      for (const rect of rectsOnPage) {
+        page.drawRectangle({
+          x: rect.x,
+          y: height - rect.y - rect.height, // Uwaga na odwrócenie osi Y
+          width: rect.width,
+          height: rect.height,
+          color: rgb(0, 0, 0), // Czarny kolor prostokąta
+        });
+      }
+    }
+
+    // Zapisz zanonimizowany PDF jako blob
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+    // Utwórz link do pobrania
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'anonymized.pdf';
+    a.click();
+    URL.revokeObjectURL(url); // Zwolnij obiekt URL
+  };
+
+  return (
+    <Container>
+      <input type="file" accept="application/pdf" onChange={handleFileChange} />
+      {pdfPages.map((src, index) => (
+        <Stage
+          key={index}
+          width={600}
+          height={800}
+          onMouseDown={(e) => handleMouseDown(e, index)}
+          onMouseMove={(e) => handleMouseMove(e, index)}
+          onMouseUp={(e) => handleMouseUp(e, index)}
+        >
+          <Layer>
+            <PdfPageImage src={src} />
+            {rects
+              .filter((rect) => rect.page === index)
+              .map((rect, i) => (
+                <Rect
+                  key={i}
+                  {...rect}
+                  fill="black"
+                  draggable
+                  onClick={() => handleSelect(rect.id)}
+                  ref={selectedId === rect.id ? transformerRef : null}
+                />
+              ))}
+            {isDrawing && startPoint && (
+              <Rect
+                x={startPoint.x}
+                y={startPoint.y}
+                width={rects[rects.length - 1]?.width || 0} // Użyj ostatniego prostokąta
+                height={rects[rects.length - 1]?.height || 0} // Użyj ostatniego prostokąta
+                fill="black"
+                opacity={0.5} // Tymczasowy prostokąt
+              />
+            )}
+            {selectedId && (
+              <Transformer
+                ref={transformerRef}
+                boundBoxFunc={(oldBox, newBox) => newBox}
+              />
+            )}
+          </Layer>
+        </Stage>
+      ))}
+      <button onClick={handleExport}>Export Anonymized PDF</button>
+    </Container>
+  );
+};
+
+const PdfPageImage: React.FC<{ src: string }> = ({ src }) => {
+  const [image] = useImage(src);
+  return <KonvaImage image={image} width={800} height={600} />;
+};
+
+export default App;
