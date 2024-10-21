@@ -10,10 +10,20 @@ import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import { useImage } from 'react-konva-utils';
 // import jsPDF from 'jspdf';
-import { Button, Container, Form, Row } from 'react-bootstrap';
+import {
+  Button,
+  Container,
+  Form,
+  OverlayTrigger,
+  Row,
+  Tooltip,
+} from 'react-bootstrap';
 import { PDFDocument, rgb } from 'pdf-lib';
 import LoadingSpinner from './componenst/LoadingSpinner';
 import './App.css';
+import UndoIcon from './icons/UndoIcon';
+import EraserIcon from './icons/EraserIcon';
+import FloppyIcon from './icons/FloppyIcon';
 
 interface RectProps {
   id: string; // Zmiana na 'string'
@@ -27,6 +37,7 @@ interface RectProps {
 const App: React.FC = () => {
   const [pdfPages, setPdfPages] = useState<string[]>([]);
   const [rects, setRects] = useState<RectProps[]>([]);
+  const [history, setHistory] = useState<RectProps[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [isDrawing, setIsDrawing] = useState(false);
@@ -82,7 +93,6 @@ const App: React.FC = () => {
   };
 
   const handleMouseDown = (e: any, page: number) => {
-    console.log('handleMouseDown page: ', page);
     const pos = e.target.getStage()?.getPointerPosition();
     if (pos) {
       setIsDrawing(true);
@@ -126,8 +136,9 @@ const App: React.FC = () => {
         height: pos.y - startPoint.y,
         page,
       };
-      console.log('newRect: ', newRect);
+
       setRects((prev) => [...prev, newRect]);
+      setHistory([...rects, newRect]);
     }
 
     setIsDrawing(false); // Upewnij się, że rysowanie się kończy
@@ -212,6 +223,19 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url); // Zwolnij obiekt URL
   };
 
+  const handleUndo = () => {
+    if (rects.length <= 0) return;
+    console.log('undo');
+    const updatedRecst = rects.slice(0, -1);
+    setRects(updatedRecst);
+    setHistory(updatedRecst);
+  };
+
+  const handleClear = () => {
+    setRects([]);
+    setHistory([]);
+  };
+
   if (loading) return <LoadingSpinner message="Ładowanie pliku PDF..." />;
   if (startExport)
     return <LoadingSpinner message="Przygotowywanie pliku PDF..." />;
@@ -227,6 +251,48 @@ const App: React.FC = () => {
             onChange={handleFileChange}
             className="my-3"
           />
+          {pdfPages.length > 0 && (
+            <div className="anonimize-buttons ">
+              <OverlayTrigger
+                trigger={['hover', 'focus']}
+                placement="top"
+                overlay={<Tooltip>Cofnij</Tooltip>}
+              >
+                <button
+                  onClick={() => handleUndo()}
+                  className="anonim-btn anonim-btn-success"
+                >
+                  <UndoIcon />
+                </button>
+              </OverlayTrigger>
+              <OverlayTrigger
+                trigger={['hover', 'focus']}
+                placement="top"
+                overlay={<Tooltip>Wyczyść</Tooltip>}
+              >
+                <button
+                  onClick={handleClear}
+                  className="anonim-btn anonim-btn-info"
+                >
+                  <EraserIcon />
+                </button>
+              </OverlayTrigger>
+              <OverlayTrigger
+                trigger={['hover', 'focus']}
+                placement="top"
+                overlay={<Tooltip>Zpiasz</Tooltip>}
+              >
+                <button
+                  onClick={handleExport}
+                  className="anonim-btn anonim-btn-danger"
+                  disabled={pdfPages.length === 0}
+                >
+                  <FloppyIcon />
+                </button>
+              </OverlayTrigger>
+            </div>
+          )}
+
           {pdfPages.map((src, index) => (
             <div key={index} className="d-flex justify-content-center">
               <Stage
@@ -278,14 +344,6 @@ const App: React.FC = () => {
               </Stage>
             </div>
           ))}
-          <Button
-            onClick={handleExport}
-            className="my-3"
-            variant="danger"
-            disabled={pdfPages.length === 0}
-          >
-            Exportuj PDF
-          </Button>
         </Row>
       </Container>
     </div>

@@ -1,3 +1,79 @@
 * {
   background-color: #f8f9fa;
 }
+
+.anonimize-buttons {
+  position: fixed;
+  background: none;
+  bottom: 40px;
+  left: 75%;
+  z-index: 9999;
+  display: flex;
+  gap: 10px;
+  /* stroke: black; */
+}
+
+.anonim-btn {
+  width: 50px;
+  height: 50px;
+  /* padding: 2px; */
+  border: 1px solid black;
+  border-radius: .4rem;
+  cursor: pointer;
+  transition: .1s ease-in-out;
+}
+
+.anonim-btn-success {
+  background-color: #198754;
+}
+
+.anonim-btn-success svg {
+  fill: #198754;
+  background-color: #198754;
+}
+
+.anonim-btn-success:hover {
+  background-color: #157347;
+  
+}
+
+.anonim-btn-success:hover svg {
+  fill: #157347;
+  background-color: #157347;
+}
+
+.anonim-btn-info {
+  background-color: #0dcaf0;
+}
+
+.anonim-btn-info svg {
+  fill: #0dcaf0;
+  background-color: #0dcaf0;
+}
+
+.anonim-btn-info:hover {
+  background-color: #31d2f2;
+}
+
+.anonim-btn-info:hover svg {
+  fill: #31d2f2;
+  background-color: #31d2f2;
+}
+
+.anonim-btn-danger {
+  background-color: #dc3545;
+}
+
+.anonim-btn-danger svg {
+  fill: #dc3545;
+  background-color: #dc3545;
+}
+
+.anonim-btn-danger:hover {
+  background-color: #b02a37;
+}
+
+.anonim-btn-danger:hover svg {
+  fill: #b02a37;
+  background-color: #b02a37;
+}
