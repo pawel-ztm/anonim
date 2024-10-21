@@ -13,6 +13,7 @@ import { useImage } from 'react-konva-utils';
 import { Button, Container, Form, Row } from 'react-bootstrap';
 import { PDFDocument, rgb } from 'pdf-lib';
 import LoadingSpinner from './componenst/LoadingSpinner';
+import './App.css';
 
 interface RectProps {
   id: string; // Zmiana na 'string'
@@ -37,6 +38,9 @@ const App: React.FC = () => {
   // const stageRefs = useRef<any[]>([]);
   const transformerRef = useRef<any>(null);
 
+  const pageWidth = 768;
+  const pageHeight = 1024;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type === 'application/pdf') {
@@ -44,7 +48,8 @@ const App: React.FC = () => {
       reader.onload = async (ev) => {
         if (ev.target?.result) {
           const typedArray = new Uint8Array(ev.target.result as ArrayBuffer);
-          await loadPdf(typedArray);
+          // console.log('PDF Data:', typedArray); // Sprawdź, co zawiera
+          await loadPdf(typedArray); // Ładujemy PDF do podglądu
         }
       };
       setFileName(file.name);
@@ -58,11 +63,11 @@ const App: React.FC = () => {
     setLoading(true);
     const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const pages: string[] = [];
-    const scale = 1.0;
+    // const scale = 2.0;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale });
+      const viewport = page.getViewport({ scale: 1 });
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
       if (context) {
@@ -121,10 +126,11 @@ const App: React.FC = () => {
         height: pos.y - startPoint.y,
         page,
       };
+      console.log('newRect: ', newRect);
       setRects((prev) => [...prev, newRect]);
     }
 
-    setIsDrawing(false);
+    setIsDrawing(false); // Upewnij się, że rysowanie się kończy
     setStartPoint(null);
   };
 
@@ -138,13 +144,17 @@ const App: React.FC = () => {
     // Tworzymy nowy dokument PDF
     const pdfDoc = await PDFDocument.create();
 
-    // Ustal wymiary stron PDF
+    // Ustal wymiary strony PDF
     const pageWidth = 768;
     const pageHeight = 1024;
 
+    // Ustal środek strony
+    const centerX = pageWidth / 2;
+    const centerY = pageHeight / 2;
+
     // Załaduj każdą stronę z oryginalnego PDF
     for (const [index, src] of pdfPages.entries()) {
-      const page = pdfDoc.addPage([pageWidth, pageHeight]); // Dodajemy nową stronę o wymiarach 1024x768
+      const page = pdfDoc.addPage([pageWidth, pageHeight]); // Dodajemy nową stronę o wymiarach 768x1024
 
       // Ustal wymiary obrazu na podstawie oryginalnego PDF
       const imageBytes = await fetch(src).then((res) => res.arrayBuffer());
@@ -156,8 +166,8 @@ const App: React.FC = () => {
       const imgWidth = width * scaleFactor;
       const imgHeight = height * scaleFactor;
 
-      const xOffset = (pageWidth - imgWidth) / 2; // Wyśrodkowanie obrazu
-      const yOffset = (pageHeight - imgHeight) / 2; // Wyśrodkowanie obrazu
+      const xOffset = centerX - imgWidth / 2; // Wyśrodkowanie obrazu
+      const yOffset = centerY - imgHeight / 2; // Wyśrodkowanie obrazu
 
       page.drawImage(image, {
         x: xOffset,
@@ -166,44 +176,22 @@ const App: React.FC = () => {
         height: imgHeight,
       });
 
-      // Rysujemy prostokąty,
-      // const rectsOnPage = rects.filter((rect) => rect.page === index);
-      // for (const rect of rectsOnPage) {
-      //   // Skalowanie pozycji prostokątów do rozmiarów strony
-      //   // const scaledX = imgWidth - rect.width - rect.x;
-      //   const scaledX = rect.x;
-      //   const scaledY = imgHeight - rect.y - rect.height;
-      //   const scaledWidth = rect.width * scaleFactor;
-      //   const scaledHeight = rect.height * scaleFactor;
-      //   // Dostosowujemy położenie prostokątów
-      //   // page.drawRectangle({
-      //   //   x: rect.x, // Dostosowanie położenia
-      //   //   y: pageHeight - rect.y - rect.height,
-      //   //   width: rect.width,
-      //   //   height: rect.height,
-      //   //   color: rgb(0, 0, 0), // Czarny kolor prostokąta
-      //   // });
-      //   page.drawRectangle({
-      //     x: scaledX,
-      //     y: scaledY,
-      //     width: rect.width,
-      //     height: rect.height,
-      //     color: rgb(0, 0, 0), // Czarny kolor prostokąta
-      //   });
-      // }
+      // Rysujemy prostokąty, skalując ich położenie i rozmiar
       const rectsOnPage = rects.filter((rect) => rect.page === index);
       for (const rect of rectsOnPage) {
-        // Skalowanie pozycji i rozmiaru prostokąta zgodnie ze skalą obrazu
-        const scaledX = rect.x;
-        const scaledY = pageHeight - rect.y - rect.height;
-        const scaledWidth = rect.width;
-        const scaledHeight = rect.height;
+        // Określanie wymarów prostokąta względem rozmiaru image
+        const scaledX = xOffset + (rect.x / pageWidth) * imgWidth;
+        const scaledY = yOffset + imgHeight - (rect.y / pageHeight) * imgHeight;
+        const scaledWidth = (rect.width / pageWidth) * imgWidth;
+        const scaledHeight = (rect.height / pageHeight) * imgHeight;
 
         // Rysowanie prostokąta zaktualizowanymi wartościami
         page.drawRectangle({
           x: scaledX,
-          y: scaledY,
+          y: scaledY - scaledHeight,
+          // width: rect.width,
           width: scaledWidth,
+          // height: rect.height,
           height: scaledHeight,
           color: rgb(0, 0, 0), // Czarny kolor prostokąta
         });
@@ -229,71 +217,99 @@ const App: React.FC = () => {
     return <LoadingSpinner message="Przygotowywanie pliku PDF..." />;
 
   return (
-    <Container>
-      <Row className="my-3">
-        <h1>Anonimizacja PDF</h1>
-        <Form.Control
-          type="file"
-          accept="application/pdf"
-          onChange={handleFileChange}
-          className="my-3"
-        />
-        {pdfPages.map((src, index) => (
-          <Stage
-            key={index}
-            width={768}
-            height={1024}
-            // ref={(el) => (stageRefs.current[index] = el)}
-            // onClick={(e) => handleStageClick(e, index)}
-            onMouseDown={(e) => handleMouseDown(e, index)}
-            onMouseMove={(e) => handleMouseMove(e, index)}
-            onMouseUp={(e) => handleMouseUp(e, index)}
-            className="border"
-          >
-            <Layer className="border">
-              <PdfPageImage src={src} />
-              {rects
-                .filter((rect) => rect.page === index)
-                .map((rect, i) => (
-                  <Rect
-                    key={i}
-                    {...rect}
-                    fill="black"
-                    draggable
-                    onClick={() => handleSelect(rect.id)} // Bez zmian, 'id' jest już typu 'string'
-                    ref={selectedId === rect.id ? transformerRef : null}
+    <div>
+      <Container className="bg-light">
+        <Row>
+          <h1>Anonimizacja PDF</h1>
+          <Form.Control
+            type="file"
+            accept="application/pdf"
+            onChange={handleFileChange}
+            className="my-3"
+          />
+          {pdfPages.map((src, index) => (
+            <div key={index} className="d-flex justify-content-center">
+              <Stage
+                // key={index}
+                width={pageWidth}
+                height={pageHeight}
+                // ref={(el) => (stageRefs.current[index] = el)}
+                // onClick={(e) => handleStageClick(e, index)}
+                onMouseDown={(e) => handleMouseDown(e, index)}
+                onMouseMove={(e) => handleMouseMove(e, index)}
+                onMouseUp={(e) => handleMouseUp(e, index)}
+                style={{ border: '1px solid black' }}
+              >
+                <Layer className="border">
+                  <PdfPageImage
+                    src={src}
+                    width={pageWidth}
+                    height={pageHeight}
                   />
-                ))}
-              {isDrawing && startPoint && (
-                <Rect
-                  x={startPoint.x}
-                  y={startPoint.y}
-                  width={rects[rects.length - 1]?.width || 0} // Użyj ostatniego prostokąta
-                  height={rects[rects.length - 1]?.height || 0} // Użyj ostatniego prostokąta
-                  fill="black"
-                  opacity={0.5} // Tymczasowy prostokąt
-                />
-              )}
-              {selectedId && (
-                <Transformer
-                  ref={transformerRef}
-                  boundBoxFunc={(newBox) => newBox}
-                />
-              )}
-            </Layer>
-          </Stage>
-        ))}
-        <Button onClick={handleExport} className="my-3">
-          Exportuj PDF
-        </Button>
-      </Row>
-    </Container>
+                  {rects
+                    .filter((rect) => rect.page === index)
+                    .map((rect, i) => (
+                      <Rect
+                        key={i}
+                        {...rect}
+                        fill="black"
+                        draggable
+                        onClick={() => handleSelect(rect.id)} // Bez zmian, 'id' jest już typu 'string'
+                        ref={selectedId === rect.id ? transformerRef : null}
+                      />
+                    ))}
+                  {isDrawing && startPoint && (
+                    <Rect
+                      x={startPoint.x}
+                      y={startPoint.y}
+                      width={rects[rects.length - 1]?.width || 0} // Użyj ostatniego prostokąta
+                      height={rects[rects.length - 1]?.height || 0} // Użyj ostatniego prostokąta
+                      fill="black"
+                      opacity={0.5} // Tymczasowy prostokąt
+                    />
+                  )}
+                  {selectedId && (
+                    <Transformer
+                      ref={transformerRef}
+                      boundBoxFunc={(newBox) => newBox}
+                    />
+                  )}
+                </Layer>
+              </Stage>
+            </div>
+          ))}
+          <Button
+            onClick={handleExport}
+            className="my-3"
+            variant="danger"
+            disabled={pdfPages.length === 0}
+          >
+            Exportuj PDF
+          </Button>
+        </Row>
+      </Container>
+    </div>
   );
 };
 
-const PdfPageImage: React.FC<{ src: string }> = ({ src }) => {
+const PdfPageImage: React.FC<{
+  src: string;
+  width: number;
+  height: number;
+}> = ({ src, width, height }) => {
   const [image] = useImage(src);
-  return <KonvaImage image={image} x={0} y={0} width={768} height={1024} />;
+  return (
+    <KonvaImage
+      image={image}
+      x={0}
+      y={0}
+      width={width}
+      height={height}
+      stroke={'black'}
+      strokeEnabled
+      strokeHitEnabled
+    />
+  );
 };
 
 export default App;
