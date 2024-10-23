@@ -19,7 +19,8 @@
     "react-bootstrap": "^2.10.5",
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.10",
-    "react-konva-utils": "^1.0.6"
+    "react-konva-utils": "^1.0.6",
+    "webp-converter": "^2.3.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.11.1",
