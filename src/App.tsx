@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import Konva from 'konva';
 import {
   Stage,
   Layer,
@@ -35,7 +36,7 @@ interface RectProps {
   page: number;
 }
 
-const App: React.FC = () => {
+const App2: React.FC = () => {
   // const [pdfPages, setPdfPages] = useState<string[]>([]);
   const [pdfPages, setPdfPages] = useState<
     { src: string; width: number; height: number }[]
@@ -55,6 +56,7 @@ const App: React.FC = () => {
   );
   // const stageRefs = useRef<any[]>([]);
   const transformerRef = useRef<any>(null);
+  const stageRef = useRef<any>(null);
 
   // const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   //   const file = e.target.files?.[0];
@@ -86,6 +88,46 @@ const App: React.FC = () => {
   //   }
   // };
 
+  // const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = e.target.files?.[0];
+  //   if (file && file.type === 'application/pdf') {
+  //     const reader = new FileReader();
+  //     reader.onload = async (ev) => {
+  //       if (ev.target?.result) {
+  //         const typedArray = new Uint8Array(ev.target.result as ArrayBuffer);
+  //         const pdfDoc = await pdfjsLib.getDocument({ data: typedArray })
+  //           .promise;
+
+  //         const numPages = pdfDoc.numPages;
+  //         const pages: { src: string; width: number; height: number }[] = [];
+
+  //         for (let i = 1; i <= numPages; i++) {
+  //           const page = await pdfDoc.getPage(i);
+  //           const viewport = page.getViewport({ scale: 1 });
+  //           const canvas = document.createElement('canvas');
+  //           const context = canvas.getContext('2d')!;
+  //           canvas.width = viewport.width;
+  //           canvas.height = viewport.height;
+
+  //           await page.render({ canvasContext: context, viewport }).promise;
+
+  //           // Konwersja obrazu canvas na WebP
+  //           const webpImage = await convertToWebP(canvas.toDataURL());
+
+  //           pages.push({
+  //             src: webpImage as string,
+  //             width: canvas.width,
+  //             height: canvas.height,
+  //           });
+  //         }
+
+  //         setPdfPages(pages);
+  //       }
+  //     };
+  //     reader.readAsArrayBuffer(file);
+  //   }
+  // };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type === 'application/pdf') {
@@ -99,43 +141,96 @@ const App: React.FC = () => {
           const numPages = pdfDoc.numPages;
           const pages: { src: string; width: number; height: number }[] = [];
 
+          // Set higher scale for better quality
+          const scale = 2.0; // Increased from default 1.0
+
           for (let i = 1; i <= numPages; i++) {
             const page = await pdfDoc.getPage(i);
-            const viewport = page.getViewport({ scale: 1 });
+            const viewport = page.getViewport({ scale });
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d')!;
+
+            // Set canvas dimensions to match scaled viewport
             canvas.width = viewport.width;
             canvas.height = viewport.height;
 
-            await page.render({ canvasContext: context, viewport }).promise;
+            // Set higher pixel density
+            const outputScale = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = Math.floor(viewport.width) + 'px';
+            canvas.style.height = Math.floor(viewport.height) + 'px';
 
-            // Konwersja obrazu canvas na WebP
-            const webpImage = await convertToWebP(canvas.toDataURL());
+            const transform =
+              outputScale !== 1
+                ? [outputScale, 0, 0, outputScale, 0, 0]
+                : undefined;
+
+            await page.render({
+              canvasContext: context,
+              viewport,
+              transform,
+            }).promise;
+
+            // Convert to high quality WebP
+            const webpImage = await convertToWebP(
+              canvas.toDataURL('image/png', 1.0)
+            );
 
             pages.push({
               src: webpImage as string,
-              width: canvas.width,
-              height: canvas.height,
+              width: viewport.width,
+              height: viewport.height,
             });
           }
 
           setPdfPages(pages);
         }
       };
+      setFileName(file.name);
       reader.readAsArrayBuffer(file);
     }
   };
+
+  // const convertToWebP = async (imageDataUrl: string) => {
+  //   return new Promise((resolve) => {
+  //     const img = new Image();
+  //     img.src = imageDataUrl;
+  //     img.onload = () => {
+  //       const canvas = document.createElement('canvas');
+  //       const ctx = canvas.getContext('2d')!;
+  //       canvas.width = img.width;
+  //       canvas.height = img.height;
+  //       ctx.drawImage(img, 0, 0);
+
+  //       const webpDataUrl = canvas.toDataURL('image/webp', 1.0);
+  //       resolve(webpDataUrl);
+  //     };
+  //   });
+  // };
+
   const convertToWebP = async (imageDataUrl: string) => {
     return new Promise((resolve) => {
       const img = new Image();
       img.src = imageDataUrl;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d')!;
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+        // Use original dimensions multiplied by a quality factor
+        const qualityFactor = 3.0;
+        canvas.width = img.width * qualityFactor;
+        canvas.height = img.height * qualityFactor;
 
+        const ctx = canvas.getContext('2d', {
+          alpha: false,
+          desynchronized: true,
+          willReadFrequently: true,
+        })!;
+
+        // Enable image smoothing for better quality
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const webpDataUrl = canvas.toDataURL('image/webp', 1.0);
         resolve(webpDataUrl);
       };
@@ -477,18 +572,248 @@ const App: React.FC = () => {
   //   URL.revokeObjectURL(url);
   // };
 
+  // const handleExport = async () => {
+  //   setStartExport(true);
+
+  //   // Ustaw rozdzielczość PDF na 300 DPI
+  //   const dpi = 300;
+  //   const inchToPt = 72; // 1 cal = 72 punkty w jsPDF
+  //   const scaleFactor = dpi / inchToPt; // Skalowanie dla DPI
+
+  //   // Tworzymy nowy dokument PDF
+  //   const pdfDoc = new jsPDF({
+  //     unit: 'px', // używamy pikseli dla lepszego dopasowania
+  //     hotfixes: ['px_scaling'],
+  //   });
+
+  //   for (const [index, src] of pdfPages.entries()) {
+  //     if (index > 0) {
+  //       pdfDoc.addPage();
+  //     }
+
+  //     const img = new Image();
+  //     img.src = src.src;
+
+  //     await new Promise((resolve) => {
+  //       img.onload = resolve;
+  //     });
+
+  //     // Pobieramy szerokość i wysokość strony w punktach (1 cal = 72 punkty)
+  //     const pdfPageWidth = pdfDoc.internal.pageSize.getWidth();
+  //     const pdfPageHeight = pdfDoc.internal.pageSize.getHeight();
+
+  //     // Skalowanie obrazu z uwzględnieniem DPI (przekształcamy wymiary do punktów)
+  //     const imgWidthInInches = img.width / dpi;
+  //     const imgHeightInInches = img.height / dpi;
+
+  //     const scaledWidth = imgWidthInInches * inchToPt;
+  //     const scaledHeight = imgHeightInInches * inchToPt;
+
+  //     // Skalowanie tak, aby obraz pasował do strony PDF
+  //     const scale = Math.min(
+  //       pdfPageWidth / scaledWidth,
+  //       pdfPageHeight / scaledHeight
+  //     );
+
+  //     const finalWidth = scaledWidth * scale;
+  //     const finalHeight = scaledHeight * scale;
+
+  //     // Centrowanie obrazu na stronie
+  //     const x = (pdfPageWidth - finalWidth) / 2;
+  //     const y = (pdfPageHeight - finalHeight) / 2;
+
+  //     // Dodaj obraz w odpowiedniej rozdzielczości
+  //     pdfDoc.addImage(img, 'WEBP', x, y, finalWidth, finalHeight);
+
+  //     // Rysowanie prostokątów (przeskalowane)
+  //     const rectsOnPage = rects.filter((rect) => rect.page === index);
+  //     for (const rect of rectsOnPage) {
+  //       const scaledX = rect.x * scale + x;
+  //       const scaledY = rect.y * scale + y;
+  //       const scaledRectWidth = rect.width * scale;
+  //       const scaledRectHeight = rect.height * scale;
+
+  //       pdfDoc.setDrawColor(0, 0, 0);
+  //       pdfDoc.rect(scaledX, scaledY, scaledRectWidth, scaledRectHeight, 'F');
+  //     }
+  //   }
+
+  //   // Zapisujemy zanonimizowany PDF jako blob
+  //   const pdfBytes = pdfDoc.output('blob');
+  //   const url = URL.createObjectURL(pdfBytes);
+  //   const a = document.createElement('a');
+  //   a.href = url;
+  //   a.download = `${fileName}-anonymized.pdf`;
+  //   setStartExport(false);
+  //   a.click();
+  //   URL.revokeObjectURL(url); // Zwolnij obiekt URL
+  // };
+
+  // const handleExport = async () => {
+  //   setStartExport(true);
+
+  //   const dpi = 300;
+  //   const inchToPt = 72;
+  //   const scaleFactor = dpi / inchToPt;
+
+  //   const pdfDoc = new jsPDF({
+  //     unit: 'px',
+  //     hotfixes: ['px_scaling'],
+  //   });
+
+  //   for (const [index, src] of pdfPages.entries()) {
+  //     if (index > 0) {
+  //       pdfDoc.addPage();
+  //     }
+
+  //     const img = new Image();
+  //     img.src = src.src;
+
+  //     await new Promise((resolve) => {
+  //       img.onload = resolve;
+  //     });
+
+  //     const pdfPageWidth = pdfDoc.internal.pageSize.getWidth();
+  //     const pdfPageHeight = pdfDoc.internal.pageSize.getHeight();
+
+  //     const imgWidthInInches = img.width / dpi;
+  //     const imgHeightInInches = img.height / dpi;
+
+  //     const scaledWidth = imgWidthInInches * inchToPt;
+  //     const scaledHeight = imgHeightInInches * inchToPt;
+
+  //     const scale = Math.min(
+  //       pdfPageWidth / scaledWidth,
+  //       pdfPageHeight / scaledHeight
+  //     );
+
+  //     const finalWidth = scaledWidth * scale;
+  //     const finalHeight = scaledHeight * scale;
+
+  //     const x = (pdfPageWidth - finalWidth) / 2;
+  //     const y = (pdfPageHeight - finalHeight) / 2;
+
+  //     pdfDoc.addImage(img, 'WEBP', x, y, finalWidth, finalHeight);
+
+  //     // Improved rectangle scaling and positioning
+  //     const rectsOnPage = rects.filter((rect) => rect.page === index);
+  //     for (const rect of rectsOnPage) {
+  //       // Calculate relative position of rectangle on original image
+  //       const relativeX = rect.x / img.width;
+  //       const relativeY = rect.y / img.height;
+  //       const relativeWidth = rect.width / img.width;
+  //       const relativeHeight = rect.height / img.height;
+
+  //       // Apply these relative positions to the scaled image
+  //       const scaledX = x + relativeX * finalWidth;
+  //       const scaledY = y + relativeY * finalHeight;
+  //       const scaledRectWidth = relativeWidth * finalWidth;
+  //       const scaledRectHeight = relativeHeight * finalHeight;
+
+  //       pdfDoc.setFillColor(0, 0, 0);
+  //       pdfDoc.rect(scaledX, scaledY, scaledRectWidth, scaledRectHeight, 'F');
+  //     }
+  //   }
+
+  //   const pdfBytes = pdfDoc.output('blob');
+  //   const url = URL.createObjectURL(pdfBytes);
+  //   const a = document.createElement('a');
+  //   a.href = url;
+  //   a.download = `${fileName}-anonymized.pdf`;
+  //   setStartExport(false);
+  //   a.click();
+  //   URL.revokeObjectURL(url);
+  // };
+
+  // const handleExport = async () => {
+  //   setStartExport(true);
+
+  //   // Increase DPI for better quality
+  //   const dpi = 600; // Doubled from 300 to 600
+  //   const inchToPt = 72;
+  //   const scaleFactor = dpi / inchToPt;
+
+  //   const pdfDoc = new jsPDF({
+  //     unit: 'px',
+  //     hotfixes: ['px_scaling'],
+  //     compress: false, // Disable compression for better quality
+  //   });
+
+  //   for (const [index, src] of pdfPages.entries()) {
+  //     if (index > 0) {
+  //       pdfDoc.addPage();
+  //     }
+
+  //     const img = new Image();
+  //     img.src = src.src;
+
+  //     await new Promise((resolve) => {
+  //       img.onload = resolve;
+  //     });
+
+  //     const pdfPageWidth = pdfDoc.internal.pageSize.getWidth();
+  //     const pdfPageHeight = pdfDoc.internal.pageSize.getHeight();
+
+  //     // Calculate dimensions preserving original aspect ratio
+  //     const aspectRatio = img.width / img.height;
+  //     const finalWidth = pdfPageWidth;
+  //     const finalHeight = pdfPageWidth / aspectRatio;
+
+  //     const x = 0;
+  //     const y = (pdfPageHeight - finalHeight) / 2;
+
+  //     // Add image with quality settings
+  //     pdfDoc.addImage(
+  //       img,
+  //       'WEBP',
+  //       x,
+  //       y,
+  //       finalWidth,
+  //       finalHeight,
+  //       undefined,
+  //       'FAST',
+  //       0
+  //     );
+
+  //     const rectsOnPage = rects.filter((rect) => rect.page === index);
+  //     for (const rect of rectsOnPage) {
+  //       const relativeX = rect.x / img.width;
+  //       const relativeY = rect.y / img.height;
+  //       const relativeWidth = rect.width / img.width;
+  //       const relativeHeight = rect.height / img.height;
+
+  //       const scaledX = x + relativeX * finalWidth;
+  //       const scaledY = y + relativeY * finalHeight;
+  //       const scaledRectWidth = relativeWidth * finalWidth;
+  //       const scaledRectHeight = relativeHeight * finalHeight;
+
+  //       pdfDoc.setFillColor(0, 0, 0);
+  //       pdfDoc.rect(scaledX, scaledY, scaledRectWidth, scaledRectHeight, 'F');
+  //     }
+  //   }
+
+  //   const pdfBytes = pdfDoc.output('blob');
+
+  //   const url = URL.createObjectURL(pdfBytes);
+  //   const a = document.createElement('a');
+  //   a.href = url;
+  //   a.download = `${fileName}-anonymized.pdf`;
+  //   setStartExport(false);
+  //   a.click();
+  //   URL.revokeObjectURL(url);
+  // };
+
   const handleExport = async () => {
     setStartExport(true);
 
-    // Ustaw rozdzielczość PDF na 300 DPI
-    const dpi = 300;
-    const inchToPt = 72; // 1 cal = 72 punkty w jsPDF
-    const scaleFactor = dpi / inchToPt; // Skalowanie dla DPI
+    const dpi = 600;
+    const inchToPt = 72;
+    const scaleFactor = dpi / inchToPt;
 
-    // Tworzymy nowy dokument PDF
     const pdfDoc = new jsPDF({
-      unit: 'px', // używamy pikseli dla lepszego dopasowania
+      unit: 'px',
       hotfixes: ['px_scaling'],
+      compress: false,
     });
 
     for (const [index, src] of pdfPages.entries()) {
@@ -503,55 +828,55 @@ const App: React.FC = () => {
         img.onload = resolve;
       });
 
-      // Pobieramy szerokość i wysokość strony w punktach (1 cal = 72 punkty)
-      const pdfPageWidth = pdfDoc.internal.pageSize.getWidth();
-      const pdfPageHeight = pdfDoc.internal.pageSize.getHeight();
+      const pdfPageWidth = pdfDoc.internal.pageSize.getWidth() * scaleFactor;
+      const pdfPageHeight = pdfDoc.internal.pageSize.getHeight() * scaleFactor;
 
-      // Skalowanie obrazu z uwzględnieniem DPI (przekształcamy wymiary do punktów)
-      const imgWidthInInches = img.width / dpi;
-      const imgHeightInInches = img.height / dpi;
+      const aspectRatio = img.width / img.height;
+      const finalWidth = pdfPageWidth;
+      const finalHeight = pdfPageWidth / aspectRatio;
 
-      const scaledWidth = imgWidthInInches * inchToPt;
-      const scaledHeight = imgHeightInInches * inchToPt;
-
-      // Skalowanie tak, aby obraz pasował do strony PDF
-      const scale = Math.min(
-        pdfPageWidth / scaledWidth,
-        pdfPageHeight / scaledHeight
-      );
-
-      const finalWidth = scaledWidth * scale;
-      const finalHeight = scaledHeight * scale;
-
-      // Centrowanie obrazu na stronie
-      const x = (pdfPageWidth - finalWidth) / 2;
+      const x = 0;
       const y = (pdfPageHeight - finalHeight) / 2;
 
-      // Dodaj obraz w odpowiedniej rozdzielczości
-      pdfDoc.addImage(img, 'WEBP', x, y, finalWidth, finalHeight);
+      // Apply scaleFactor to image rendering
+      pdfDoc.addImage(
+        img,
+        'WEBP',
+        x / scaleFactor,
+        y / scaleFactor,
+        finalWidth / scaleFactor,
+        finalHeight / scaleFactor,
+        undefined,
+        'FAST',
+        0
+      );
 
-      // Rysowanie prostokątów (przeskalowane)
       const rectsOnPage = rects.filter((rect) => rect.page === index);
       for (const rect of rectsOnPage) {
-        const scaledX = rect.x * scale + x;
-        const scaledY = rect.y * scale + y;
-        const scaledRectWidth = rect.width * scale;
-        const scaledRectHeight = rect.height * scale;
+        const relativeX = rect.x / img.width;
+        const relativeY = rect.y / img.height;
+        const relativeWidth = rect.width / img.width;
+        const relativeHeight = rect.height / img.height;
 
-        pdfDoc.setDrawColor(0, 0, 0);
+        // Apply scaleFactor to rectangle positioning and dimensions
+        const scaledX = (x + relativeX * finalWidth) / scaleFactor;
+        const scaledY = (y + relativeY * finalHeight) / scaleFactor;
+        const scaledRectWidth = (relativeWidth * finalWidth) / scaleFactor;
+        const scaledRectHeight = (relativeHeight * finalHeight) / scaleFactor;
+
+        pdfDoc.setFillColor(0, 0, 0);
         pdfDoc.rect(scaledX, scaledY, scaledRectWidth, scaledRectHeight, 'F');
       }
     }
 
-    // Zapisujemy zanonimizowany PDF jako blob
-    const pdfBytes = pdfDoc.output('blob');
+    const pdfBytes = pdfDoc.output('blob', { compress: false });
     const url = URL.createObjectURL(pdfBytes);
     const a = document.createElement('a');
     a.href = url;
     a.download = `${fileName}-anonymized.pdf`;
     setStartExport(false);
     a.click();
-    URL.revokeObjectURL(url); // Zwolnij obiekt URL
+    URL.revokeObjectURL(url);
   };
 
   const handleUndo = () => {
@@ -582,6 +907,168 @@ const App: React.FC = () => {
       />
     ));
   }, [pdfPages]);
+
+  const handleExportPNG = () => {
+    if (!stageRef.current) return;
+
+    const dataURL = stageRef.current.toDataURL({
+      mimeType: 'image/png',
+      pixelRatio: 2,
+    });
+    const link = document.createElement('a');
+    link.href = dataURL;
+    link.download = `${fileName || 'annotated'}.png`;
+    link.click();
+  };
+
+  // const handleExportAllToPNG = async () => {
+  //   if (!stageRef.current) return;
+
+  //   for (let index = 0; index < pdfPages.length; index++) {
+  //     // Ustaw pozycję widoku na bieżącą stronę
+  //     stageRef.current.position({ x: 0, y: -index * pdfPages[index].height });
+  //     stageRef.current.batchDraw();
+
+  //     // Upewnij się, że zmiana pozycji jest odświeżona przed wykonaniem zrzutu
+  //     await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  //     // Generowanie pliku PNG
+  //     const dataURL = stageRef.current.toDataURL({
+  //       mimeType: 'image/png',
+  //       pixelRatio: 2,
+  //     });
+
+  //     // Tworzenie i pobranie pliku PNG
+  //     const link = document.createElement('a');
+  //     link.href = dataURL;
+  //     link.download = `${fileName || 'annotated'}_page_${index + 1}.png`;
+  //     link.click();
+  //   }
+
+  //   // Przywrócenie pozycji sceny po zakończeniu eksportu
+  //   stageRef.current.position({ x: 0, y: 0 });
+  //   stageRef.current.batchDraw();
+  // };
+
+  const handleExportAllToPNG = async () => {
+    if (!stageRef.current) return;
+
+    for (let index = 0; index < pdfPages.length; index++) {
+      // Create a temporary stage for each page
+      const tempStage = new Konva.Stage({
+        container: document.createElement('div'),
+        width: pdfPages[index].width,
+        height: pdfPages[index].height,
+      });
+
+      const layer = new Konva.Layer();
+      tempStage.add(layer);
+
+      // Add the page image
+      const img = new Image();
+      img.src = pdfPages[index].src;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+
+      const imageNode = new Konva.Image({
+        image: img,
+        width: pdfPages[index].width,
+        height: pdfPages[index].height,
+      });
+      layer.add(imageNode);
+
+      // Add rectangles for this page
+      rects
+        .filter((rect) => rect.page === index)
+        .forEach((rect) => {
+          const rectNode = new Konva.Rect({
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            fill: 'black',
+          });
+          layer.add(rectNode);
+        });
+
+      // Generate PNG for this page
+      const dataURL = tempStage.toDataURL({
+        mimeType: 'image/png',
+        pixelRatio: 2,
+        quality: 1,
+      });
+
+      // Download the PNG
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = `${fileName || 'annotated'}_page_${index + 1}.png`;
+      link.click();
+
+      // Clean up
+      tempStage.destroy();
+    }
+  };
+
+  const handleExportWebP = async () => {
+    setStartExport(true);
+
+    for (let index = 0; index < pdfPages.length; index++) {
+      const tempStage = new Konva.Stage({
+        container: document.createElement('div'),
+        width: pdfPages[index].width,
+        height: pdfPages[index].height,
+      });
+
+      const layer = new Konva.Layer();
+      tempStage.add(layer);
+
+      // Add the page image
+      const img = new Image();
+      img.src = pdfPages[index].src;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+
+      const imageNode = new Konva.Image({
+        image: img,
+        width: pdfPages[index].width,
+        height: pdfPages[index].height,
+      });
+      layer.add(imageNode);
+
+      // Add rectangles for this page
+      rects
+        .filter((rect) => rect.page === index)
+        .forEach((rect) => {
+          const rectNode = new Konva.Rect({
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            fill: 'black',
+          });
+          layer.add(rectNode);
+        });
+
+      // Generate WebP with high quality
+      const dataURL = tempStage.toDataURL({
+        mimeType: 'image/webp',
+        quality: 1,
+        pixelRatio: 2,
+      });
+
+      // Download the WebP
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = `${fileName || 'annotated'}_page_${index + 1}.webp`;
+      link.click();
+
+      tempStage.destroy();
+    }
+
+    setStartExport(false);
+  };
 
   return (
     <div>
@@ -633,6 +1120,16 @@ const App: React.FC = () => {
                   <FloppyIcon />
                 </button>
               </OverlayTrigger>
+              <OverlayTrigger
+                trigger={['hover', 'focus']}
+                placement="top"
+                overlay={<Tooltip>Export to WebP</Tooltip>}
+              >
+                <Button onClick={handleExportWebP} className="ms-2">
+                  Export WebP
+                </Button>
+              </OverlayTrigger>
+              <Button onClick={handleExportAllToPNG}>Export as PNG</Button>
             </div>
           )}
 
@@ -648,6 +1145,10 @@ const App: React.FC = () => {
                 onMouseMove={(e) => handleMouseMove(e, index)}
                 onMouseUp={(e) => handleMouseUp(e, index)}
                 style={{ border: '1px solid black' }}
+                ref={stageRef}
+                pixelRatio={window.devicePixelRatio || 2}
+                imageSmoothingEnabled={true}
+                perfectDrawEnabled={true}
               >
                 <Layer className="border">
                   <PdfPageImage
@@ -742,4 +1243,4 @@ const PdfPageImage = ({
   return <KonvaImage image={image} x={0} y={0} width={width} height={height} />;
 };
 
-export default App;
+export default App2;
