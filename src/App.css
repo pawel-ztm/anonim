@@ -77,3 +77,29 @@
   fill: #b02a37;
   background-color: #b02a37;
 }
+
+.history-panel {
+  width: 200px;
+  height: 100%;
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-right: 1px solid #dee2e6;
+}
+
+.history-item {
+  padding: 8px;
+  margin: 4px 0;
+  background-color: white;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.history-item:hover {
+  background-color: #e9ecef;
+}
+
+.canvas-container {
+  display: flex;
+  flex-direction: row;
+}
